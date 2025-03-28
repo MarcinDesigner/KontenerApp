@@ -33,6 +33,6 @@ function App() {
       </NavigationContainer>
     </GestureHandlerRootView>
   );
-};
+}
 
 export default registerRootComponent(App);

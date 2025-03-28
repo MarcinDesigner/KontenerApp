@@ -16,6 +16,7 @@ const { width, height } = Dimensions.get('window');
 const SplashScreen = ({ navigation }) => {
   const handleStart = () => {
     // Przejście do ekranu głównego po kliknięciu przycisku
+    // Zamiast używać navigation.reset, używamy prostego navigation.navigate
     navigation.navigate('Home');
   };
 

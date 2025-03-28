@@ -13,40 +13,59 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import SearchBar from '../components/SearchBar';
 import FilterButtons from '../components/FilterButtons';
-import SearchHistoryItem from '../components/SearchHistoryItem';
-import { getSearchHistory, removeFromSearchHistory, clearSearchHistory } from '../services/searchHistoryService';
+import ContainerItem from '../components/ContainerItem';
+import MapModal from '../components/MapModal';
+import { getSearchResults, removeSearchResult, clearSearchResults } from '../services/searchResultsService';
 
 const HomeScreen = ({ navigation }) => {
+  // Wszystkie stany definiujemy na początku komponentu
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
-  const [searchHistory, setSearchHistory] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
+  const [filteredResults, setFilteredResults] = useState([]);
+  const [mapModalVisible, setMapModalVisible] = useState(false);
+  const [selectedContainer, setSelectedContainer] = useState(null);
   
-  // Pobierz historię wyszukiwań przy pierwszym renderowaniu
-  useEffect(() => {
-    loadSearchHistory();
-  }, []);
-  
-  // Odświeżaj historię przy każdym wejściu na ekran
-  useFocusEffect(
-    useCallback(() => {
-      loadSearchHistory();
-    }, [])
-  );
-  
-  // Funkcja pobierająca historię wyszukiwań
-  const loadSearchHistory = async () => {
+  // Definiujemy funkcje w stałej kolejności
+  const loadSearchResults = useCallback(async () => {
     try {
-      const history = await getSearchHistory();
-      setSearchHistory(history);
+      const results = await getSearchResults();
+      setSearchResults(results);
     } catch (error) {
       console.error('Błąd podczas ładowania historii wyszukiwań:', error);
     }
-  };
+  }, []);
   
-  // Funkcja do obsługi wyszukiwania
+  // Główny useEffect - wywoływany tylko raz przy montowaniu
+  useEffect(() => {
+    loadSearchResults();
+  }, [loadSearchResults]);
+  
+  // useFocusEffect powinien być zawsze wywoływany po innych hookach
+  useFocusEffect(
+    useCallback(() => {
+      loadSearchResults();
+      return () => {
+        // Funkcja czyszcząca (opcjonalna)
+      };
+    }, [loadSearchResults])
+  );
+  
+  // Efekt filtrowania - zależny od searchResults i activeFilter
+  useEffect(() => {
+    if (activeFilter === 'all') {
+      setFilteredResults(searchResults);
+    } else {
+      const filtered = searchResults.filter(container => 
+        container.type && container.type.toLowerCase() === activeFilter.toLowerCase()
+      );
+      setFilteredResults(filtered);
+    }
+  }, [searchResults, activeFilter]);
+  
+  // Funkcje obsługujące zdarzenia
   const handleSearch = () => {
     if (searchQuery.trim()) {
-      // Gdy mamy zapytanie, przejdź do ekranu wyników z parametrami wyszukiwania
       navigation.navigate('ContainerList', { 
         query: searchQuery,
         filter: activeFilter
@@ -54,30 +73,24 @@ const HomeScreen = ({ navigation }) => {
     }
   };
   
-  // Funkcja obsługująca zmianę filtra
   const handleFilterChange = (filter) => {
     setActiveFilter(filter);
   };
   
-  // Obsługa wyboru elementu z historii
-  const handleSelectHistoryItem = (item) => {
-    navigation.navigate('ContainerList', { 
-      query: item.query,
-      filter: item.filter
-    });
+  const handleOpenMap = (container) => {
+    setSelectedContainer(container);
+    setMapModalVisible(true);
   };
   
-  // Funkcja usuwająca element z historii
-  const handleRemoveHistoryItem = async (id) => {
+  const handleRemoveContainer = async (containerId) => {
     try {
-      await removeFromSearchHistory(id);
-      loadSearchHistory(); // Odświeżenie listy
+      await removeSearchResult(containerId);
+      loadSearchResults(); // Odświeżenie listy
     } catch (error) {
-      console.error('Błąd podczas usuwania z historii:', error);
+      console.error('Błąd podczas usuwania kontenera z historii:', error);
     }
   };
   
-  // Funkcja czyszcząca całą historię
   const handleClearHistory = () => {
     Alert.alert(
       'Wyczyścić historię?',
@@ -91,8 +104,8 @@ const HomeScreen = ({ navigation }) => {
           text: 'Wyczyść',
           onPress: async () => {
             try {
-              await clearSearchHistory();
-              loadSearchHistory(); // Odświeżenie listy
+              await clearSearchResults();
+              loadSearchResults(); // Odświeżenie listy
             } catch (error) {
               console.error('Błąd podczas czyszczenia historii:', error);
             }
@@ -103,31 +116,65 @@ const HomeScreen = ({ navigation }) => {
     );
   };
   
-  // Renderowanie elementu historii
-  const renderHistoryItem = ({ item }) => (
-    <SearchHistoryItem 
+  const refreshContainerList = useCallback(() => {
+    loadSearchResults();
+  }, [loadSearchResults]);
+  
+  // Funkcje renderujące komponenty
+  const renderContainerItem = ({ item }) => (
+    <ContainerItem 
       item={item}
-      onPress={handleSelectHistoryItem}
-      onRemove={handleRemoveHistoryItem}
+      onMapPress={() => handleOpenMap(item)}
+      onRemove={handleRemoveContainer}
+      refreshFavorites={refreshContainerList}
     />
   );
   
-  // Renderowanie pustej historii
   const renderEmptyHistory = () => (
     <View style={styles.emptyStateContainer}>
-      <MaterialIcons name="history" size={80} color="#E0E0E0" />
+      <MaterialIcons name="inventory-2" size={80} color="#E0E0E0" />
       <Text style={styles.emptyStateText}>
         Brak historii wyszukiwań
       </Text>
       <Text style={styles.emptyStateSubText}>
-        Wyszukaj kontener, aby zobaczyć historię
+        Wyszukaj kontener, aby zobaczyć wyniki
       </Text>
     </View>
   );
   
+  // Renderowanie głównej zawartości
+  const renderContent = () => {
+    return (
+      <>
+        {filteredResults.length > 0 && (
+          <View style={styles.listHeader}>
+            <Text style={styles.listHeaderText}>
+              {activeFilter === 'all' ? 'Wyszukane kontenery' : 
+                activeFilter === 'import' ? 'Filtrujesz: Import' : 'Filtrujesz: Export'}
+            </Text>
+            {filteredResults.length > 0 && (
+              <TouchableOpacity onPress={handleClearHistory}>
+                <Text style={styles.clearHistoryText}>Wyczyść</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+        
+        <FlatList
+          data={filteredResults}
+          renderItem={renderContainerItem}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.containerList}
+          ListEmptyComponent={renderEmptyHistory}
+        />
+      </>
+    );
+  };
+  
+  // Renderowanie komponentu
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F6F6F6" />
       
       {/* Nagłówek */}
       <View style={styles.header}>
@@ -135,33 +182,27 @@ const HomeScreen = ({ navigation }) => {
       </View>
       
       {/* Komponent wyszukiwarki */}
-      <SearchBar 
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        onSubmitEditing={handleSearch}
-      />
+      <View style={{ backgroundColor: '#FFFFFF' }}>
+        <SearchBar 
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onSubmitEditing={handleSearch}
+        />
       
-      {/* Komponent przycisków filtrów */}
-      <FilterButtons activeFilter={activeFilter} onFilterChange={handleFilterChange} />
-      
-      {/* Nagłówek sekcji historii */}
-      <View style={styles.historyHeader}>
-        <Text style={styles.historyTitle}>Historia wyszukiwań</Text>
-        
-        {searchHistory.length > 0 && (
-          <TouchableOpacity onPress={handleClearHistory}>
-            <Text style={styles.clearHistoryText}>Wyczyść</Text>
-          </TouchableOpacity>
-        )}
+        {/* Komponent przycisków filtrów */}
+        <FilterButtons activeFilter={activeFilter} onFilterChange={handleFilterChange} />
       </View>
       
-      {/* Lista historii wyszukiwań */}
-      <FlatList
-        data={searchHistory}
-        renderItem={renderHistoryItem}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.historyList}
-        ListEmptyComponent={renderEmptyHistory}
+      {/* Zawartość główna */}
+      <View style={styles.contentWrapper}>
+        {renderContent()}
+      </View>
+      
+      {/* Modal mapy */}
+      <MapModal
+        visible={mapModalVisible}
+        onClose={() => setMapModalVisible(false)}
+        containerData={selectedContainer}
       />
       
       {/* Dolne menu nawigacyjne */}
@@ -191,7 +232,10 @@ const HomeScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#F6F6F6',
+  },
+  contentWrapper: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -200,20 +244,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 15,
     paddingBottom: 15,
+    backgroundColor: '#FFFFFF', // Nagłówek pozostaje biały
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#212121',
   },
-  historyHeader: {
+  listHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  historyTitle: {
+  listHeaderText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#424242',
@@ -222,7 +267,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1976D2',
   },
-  historyList: {
+  containerList: {
     paddingHorizontal: 16,
     paddingBottom: 16,
     flexGrow: 1,

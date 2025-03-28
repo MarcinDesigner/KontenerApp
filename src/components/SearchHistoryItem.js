@@ -61,7 +61,10 @@ const SearchHistoryItem = ({ item, onPress, onRemove }) => {
               styles.filterBadge,
               isImport ? styles.importBadge : styles.exportBadge
             ]}>
-              <Text style={styles.filterText}>
+              <Text style={[
+                styles.filterText,
+                isImport ? styles.importText : styles.exportText
+              ]}>
                 {isImport ? 'Import' : 'Export'}
               </Text>
             </View>
@@ -116,19 +119,25 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   filterBadge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 2,
-    borderRadius: 12,
+    borderRadius: 100, // Pełne zaokrąglenie
   },
   importBadge: {
-    backgroundColor: '#FFF8E1',
+    backgroundColor: '#FFF2E5',
   },
   exportBadge: {
-    backgroundColor: '#FFEBEE',
+    backgroundColor: '#FEE9E9',
   },
   filterText: {
     fontSize: 10,
     fontWeight: '500',
+  },
+  importText: {
+    color: '#F39C12',
+  },
+  exportText: {
+    color: '#E74C3C',
   },
   removeButton: {
     padding: 8,

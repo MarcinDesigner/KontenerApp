@@ -85,7 +85,7 @@ const FavoritesScreen = ({ navigation }) => {
   
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F6F6F6" />
       
       {/* Nagłówek */}
       <View style={styles.header}>
@@ -93,13 +93,15 @@ const FavoritesScreen = ({ navigation }) => {
       </View>
       
       {/* Lista kontenerów */}
-      <FlatList
-        data={favorites}
-        renderItem={renderContainerItem}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.containerList}
-        ListEmptyComponent={renderEmptyState}
-      />
+      <View style={styles.contentWrapper}>
+        <FlatList
+          data={favorites}
+          renderItem={renderContainerItem}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.containerList}
+          ListEmptyComponent={renderEmptyState}
+        />
+      </View>
       
       {/* Modal mapy */}
       <MapModal
@@ -112,7 +114,7 @@ const FavoritesScreen = ({ navigation }) => {
       <View style={styles.tabBar}>
         <TouchableOpacity 
           style={styles.tabItem}
-          onPress={() => navigation.navigate('ContainerList')}
+          onPress={() => navigation.navigate('Home')}
         >
           <MaterialIcons name="search" size={24} color="#9E9E9E" />
           <Text style={styles.tabText}>Śledzenie</Text>
@@ -135,7 +137,10 @@ const FavoritesScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F6F6F6',
+  },
+  contentWrapper: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

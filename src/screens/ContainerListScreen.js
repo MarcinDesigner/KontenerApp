@@ -8,10 +8,12 @@ import {
   StatusBar,
   FlatList,
   ActivityIndicator,
-  Alert
+  Alert,
+  BackHandler
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import SearchBar from '../components/SearchBar';
 import FilterButtons from '../components/FilterButtons';
 import ContainerItem from '../components/ContainerItem';
@@ -19,6 +21,10 @@ import MapModal from '../components/MapModal';
 import { searchContainers } from '../api/containerApi';
 import { removeFromFavorites } from '../services/favoritesService';
 import { addToSearchHistory } from '../services/searchHistoryService';
+import { addSearchResults, removeSearchResult } from '../services/searchResultsService';
+
+// Klucz do przechowywania ostatniego wyszukiwania
+const LAST_SEARCH_STORAGE_KEY = '@container_app_last_search';
 
 const ContainerListScreen = ({ navigation, route }) => {
   // Pobierz parametry z nawigacji, jeśli są dostępne
@@ -36,12 +42,42 @@ const ContainerListScreen = ({ navigation, route }) => {
   const [error, setError] = useState(null);
   const [searched, setSearched] = useState(false); // Czy użytkownik wykonał wyszukiwanie
   
-  // Odświeżaj listę przy każdym wejściu na ekran
+  // Załaduj ostatnie wyszukiwanie przy pierwszym renderowaniu
+  useEffect(() => {
+    const loadLastSearch = async () => {
+      try {
+        const lastSearchJson = await AsyncStorage.getItem(LAST_SEARCH_STORAGE_KEY);
+        if (lastSearchJson) {
+          const lastSearch = JSON.parse(lastSearchJson);
+          setContainers(lastSearch.containers || []);
+          
+          // Ustaw zapytanie i filtr tylko jeśli nie zostały przekazane przez nawigację
+          if (!initialQuery) {
+            setSearchQuery(lastSearch.query || '');
+          }
+          if (!route.params?.filter) {
+            setActiveFilter(lastSearch.filter || 'all');
+          }
+          
+          setSearched(true);
+        }
+      } catch (error) {
+        console.error('Błąd podczas ładowania ostatniego wyszukiwania:', error);
+      }
+    };
+    
+    loadLastSearch();
+  }, []);
+  
+  // Obsługa przycisku "wstecz" na Android
   useFocusEffect(
     useCallback(() => {
-      if (searchQuery.trim() && searched) {
-        handleSearch();
-      }
+      const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+        navigation.navigate('Home');
+        return true;
+      });
+      
+      return () => backHandler.remove();
     }, [])
   );
   
@@ -61,6 +97,21 @@ const ContainerListScreen = ({ navigation, route }) => {
     }
   }, [route.params?.query, route.params?.filter]);
   
+  // Funkcja zapisująca ostatnie wyszukiwanie
+  const saveLastSearch = async (query, filter, searchResults) => {
+    try {
+      const lastSearch = {
+        query,
+        filter,
+        containers: searchResults,
+        timestamp: new Date().toISOString()
+      };
+      await AsyncStorage.setItem(LAST_SEARCH_STORAGE_KEY, JSON.stringify(lastSearch));
+    } catch (error) {
+      console.error('Błąd podczas zapisywania ostatniego wyszukiwania:', error);
+    }
+  };
+  
   // Funkcja obsługująca wyszukiwanie
   const handleSearch = async (query = searchQuery, filter = activeFilter) => {
     console.log(`Rozpoczynam wyszukiwanie. Zapytanie: "${query}", Filtr: "${filter}"`);
@@ -75,10 +126,23 @@ const ContainerListScreen = ({ navigation, route }) => {
       const results = await searchContainers(query, filter);
       console.log(`Otrzymałem ${results.length} wyników`);
       
-      setContainers(results);
-      
-      // Dodaj wyszukiwanie do historii
-      await addToSearchHistory(query, filter);
+      if (results.length > 0) {
+        setContainers(results);
+        
+        // Zapisz ostatnie wyszukiwanie
+        saveLastSearch(query, filter, results);
+        
+        // Dodaj wyszukiwanie do historii
+        await addToSearchHistory(query, filter);
+        
+        // Dodaj wyniki wyszukiwania do historii wyników
+        const savedSuccessfully = await addSearchResults(results);
+        console.log(`Wyniki zapisane do historii: ${savedSuccessfully ? 'tak' : 'nie'}`);
+      } else {
+        setContainers([]);
+        // Nadal dodajemy wyszukiwanie do historii zapytań, ale nie do wyników
+        await addToSearchHistory(query, filter);
+      }
     } catch (error) {
       console.error('Błąd wyszukiwania:', error);
       
@@ -123,14 +187,24 @@ const ContainerListScreen = ({ navigation, route }) => {
   
   // Funkcja usuwająca kontener z listy (po przesunięciu)
   const handleRemoveContainer = async (containerId) => {
-    // Usuń z listy lokalnie
-    setContainers(prev => prev.filter(container => container.id !== containerId));
-    
-    // Usuń również z ulubionych, jeśli był dodany
     try {
+      // Usuń z listy lokalnie
+      const updatedContainers = containers.filter(container => container.id !== containerId);
+      setContainers(updatedContainers);
+      
+      // Aktualizuj ostatnie wyszukiwanie
+      saveLastSearch(searchQuery, activeFilter, updatedContainers);
+      
+      // Usuń z historii wyszukiwań
+      await removeSearchResult(containerId);
+      
+      // Usuń również z ulubionych, jeśli był dodany
       await removeFromFavorites(containerId);
+      
+      console.log(`Kontener ${containerId} usunięty z listy i historii`);
     } catch (error) {
-      console.error('Błąd podczas usuwania z ulubionych:', error);
+      console.error('Błąd podczas usuwania kontenera:', error);
+      Alert.alert('Błąd', 'Nie udało się usunąć kontenera.');
     }
   };
   
@@ -210,11 +284,17 @@ const ContainerListScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F6F6F6" />
       
-      {/* Nagłówek */}
+      {/* Nagłówek z przyciskiem powrotu */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Moje kontenery</Text>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.navigate('Home')}
+        >
+          <MaterialIcons name="arrow-back" size={24} color="#212121" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Wyszukiwanie</Text>
       </View>
       
       {/* Komponent wyszukiwarki */}
@@ -241,7 +321,10 @@ const ContainerListScreen = ({ navigation, route }) => {
       
       {/* Dolne menu nawigacyjne */}
       <View style={styles.tabBar}>
-        <TouchableOpacity style={styles.tabItem}>
+        <TouchableOpacity 
+          style={styles.tabItem}
+          onPress={() => navigation.navigate('Home')}
+        >
           <MaterialIcons name="search" size={24} color="#1976D2" />
           <Text style={[styles.tabText, styles.activeTabText]}>Śledzenie</Text>
         </TouchableOpacity>
@@ -266,16 +349,18 @@ const ContainerListScreen = ({ navigation, route }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F6F6F6',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 15,
-    paddingBottom: 15,
+    paddingVertical: 15,
     backgroundColor: '#FFFFFF',
+  },
+  backButton: {
+    padding: 4,
+    marginRight: 16,
   },
   headerTitle: {
     fontSize: 20,

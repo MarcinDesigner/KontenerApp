@@ -210,6 +210,9 @@ function mapContainerData(container) {
   // Oblicz, ile czasu minęło od ostatniego zdarzenia
   const timeAgo = calculateTimeAgo(container.loadingTime || container.gateInTime);
   
+  // Używamy gateInTime dla daty przybycia zamiast loadingTime
+  const arrivalDate = formatDate(container.gateInTime) || 'N/A';
+  
   return {
     id: container.containerNumber || String(Math.random()),
     number: container.containerNumber || 'UNKNOWN',
@@ -217,7 +220,7 @@ function mapContainerData(container) {
     status: translateStatus(container.status),
     progress,
     terminal: container.terminalName || 'N/A',
-    arrival: formatDate(container.loadingTime) || 'N/A', // Używamy loadingTime jako daty przybycia
+    arrival: arrivalDate, // Używamy gateInTime jako daty przybycia
     type,
     timeAgo,
     carrier: container.shipName || 'N/A',
@@ -229,15 +232,18 @@ function mapContainerData(container) {
  * Tworzy historię statusów na podstawie danych kontenera
  */
 function createHistoryFromContainer(container) {
+  // Używamy gateInTime zarówno dla "Rozpoczęcie transportu" jak i "Na statku"
+  const arrivalDate = formatDate(container.gateInTime) || 'N/A';
+  
   return [
     { 
       title: 'Rozpoczęcie transportu', 
-      date: formatDate(container.gateInTime) || 'N/A',
+      date: arrivalDate, // Ta sama data dla rozpoczęcia transportu
       completed: Boolean(container.gateInTime) 
     },
     { 
       title: 'Na statku', 
-      date: formatDate(container.loadingTime) || 'N/A',
+      date: arrivalDate, // Ta sama data dla na statku
       completed: Boolean(container.loadingTime) 
     },
     { 
@@ -350,7 +356,7 @@ function translateStatus(status) {
     'CUSTOMS_CLEARANCE': 'Odprawa celna',
     'WAITING_FOR_PICKUP': 'Oczekiwanie na odbiór',
     'LOADING': 'Załadunek',
-    // Dodaj więcej tłumaczeń statusów według potrzeb
+  
   };
   
   return statusMap[status] || status;
