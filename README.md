@@ -1,50 +1,64 @@
-# Welcome to your Expo app 👋
+# Funkcje w aplikacji Container Tracking
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+## Zestaw funkcji
 
-## Get started
+### Główne funkcje
+1. **Wyszukiwanie kontenerów** - możliwość wyszukiwania kontenerów po numerze lub kodzie MRN
+2. **Filtrowanie** - filtrowanie kontenerów (Import/Export/Wszystkie)
+3. **Historia wyszukiwań** - zapisywanie i wyświetlanie ostatnio wyszukiwanych kontenerów
+4. **Ulubione kontenery** - możliwość zapisania kontenerów do szybkiego dostępu
+5. **Szczegóły kontenera** - wyświetlanie szczegółowych informacji o kontenerze
+6. **Informacje o statusie** - wyświetlanie aktualnego statusu kontenerów i postępu dostawy
+7. **Historia statusów** - oś czasu z historią zmian statusu kontenera
 
-1. Install dependencies
+### API i zarządzanie danymi
+1. `getContainerDetails` - pobieranie szczegółów kontenera
+2. `searchContainers` - wyszukiwanie kontenerów
+3. `getFavorites` - pobieranie ulubionych kontenerów
+4. `addToFavorites` - dodawanie kontenera do ulubionych
+5. `removeFromFavorites` - usuwanie kontenera z ulubionych
+6. `isFavorite` - sprawdzanie czy kontener jest w ulubionych
+7. `getSearchHistory` - pobieranie historii wyszukiwań
+8. `addToSearchHistory` - dodawanie zapytania do historii
+9. `removeFromSearchHistory` - usuwanie zapytania z historii
+10. `clearSearchHistory` - czyszczenie całej historii wyszukiwań
+11. `getSearchResults` - pobieranie wyników wyszukiwań
+12. `addSearchResults` - zapisywanie wyników wyszukiwań
+13. `removeSearchResult` - usuwanie wyniku wyszukiwania
+14. `clearSearchResults` - czyszczenie wszystkich wyników wyszukiwań
 
-   ```bash
-   npm install
-   ```
+## Nowe funkcje
 
-2. Start the app
+### Odświeżanie danych
+1. **Pull-to-refresh** - odświeżanie danych przez przeciągnięcie listy w dół
+   - Zaimplementowane w ContainerListScreen, FavoritesScreen i HomeScreen
+   - Funkcja `onRefresh` uruchamiana przez gest przeciągnięcia
+   - Stan `refreshing` kontrolujący widoczność animacji odświeżania
 
-   ```bash
-    npx expo start
-   ```
+2. **Automatyczna synchronizacja danych**
+   - `refreshContainersData` - odświeżanie danych kontenerów z API
+   - `updateResultsInStorage` - zapisywanie zaktualizowanych danych w pamięci
+   - `updateFavoritesInStorage` - zapisywanie zaktualizowanych ulubionych w pamięci
+   - Wykrywanie zmian w danych przed aktualizacją (optymalizacja wydajności)
 
-In the output, you'll find options to open the app in a
+3. **Automatyczne odświeżanie w tle**
+   - Interwał odświeżania danych co 5 minut
+   - Funkcja `setupRefreshInterval` do zarządzania interwałem
+   - Referencja `refreshInterval` do czyszczenia interwału
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+4. **Monitorowanie stanu aplikacji**
+   - Wykorzystanie `AppState` do wykrywania zmian stanu aplikacji
+   - Odświeżanie danych przy powrocie aplikacji z tła do aktywnego stanu
+   - Resetowanie interwału przy powrocie aplikacji z tła
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### Obsługa stanu kontenera
+1. **Statusy kontenerów**
+   - Rozszerzone mapowanie statusów (GATE_IN jako "Wyładunek kontenera")
+   - Poprawione przypisywanie typów Import/Export na podstawie statusu
+   - Usunięcie etapu "Dostarczenie" z historii statusów
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+2. **Optymalizacje i poprawki**
+   - Sprawdzanie zmian w danych przed aktualizacją
+   - Lepsze zarządzanie pamięcią i efektami w komponencie
+   - Dodatkowe logowanie do debugowania
+   - Obsługa błędów w procesie aktualizacji danych
