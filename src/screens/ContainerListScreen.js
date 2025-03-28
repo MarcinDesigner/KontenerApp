@@ -18,6 +18,7 @@ import ContainerItem from '../components/ContainerItem';
 import MapModal from '../components/MapModal';
 import { searchContainers } from '../api/containerApi';
 import { removeFromFavorites } from '../services/favoritesService';
+import { addToSearchHistory } from '../services/searchHistoryService';
 
 const ContainerListScreen = ({ navigation, route }) => {
   // Pobierz parametry z nawigacji, jeśli są dostępne
@@ -75,6 +76,9 @@ const ContainerListScreen = ({ navigation, route }) => {
       console.log(`Otrzymałem ${results.length} wyników`);
       
       setContainers(results);
+      
+      // Dodaj wyszukiwanie do historii
+      await addToSearchHistory(query, filter);
     } catch (error) {
       console.error('Błąd wyszukiwania:', error);
       

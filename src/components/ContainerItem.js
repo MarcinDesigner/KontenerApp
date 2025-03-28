@@ -32,10 +32,20 @@ const ContainerItem = ({ item, onMapPress, onRemove, refreshFavorites }) => {
     checkFavoriteStatus();
   }, [checkFavoriteStatus]);
 
+  // Sprawdź, czy którykolwiek z głównych elementów ma wartość N/A
+  const isNotAvailable = 
+    item.status === 'Nieznany' || 
+    item.terminal === 'N/A' ||
+    item.arrival === 'N/A' ||
+    item.carrier === 'N/A' ||
+    item.timeAgo === 'N/A';
+
   // Ustawienie koloru paska postępu i tekstu statusu
   let progressBarColor = '#4285F4'; // domyślny niebieski dla statusu "W trakcie"
   if (item.progress === 100) {
     progressBarColor = '#34A853'; // zielony dla zakończonych
+  } else if (item.progress === 0 && isNotAvailable) {
+    progressBarColor = '#9E9E9E'; // szary dla N/A
   }
 
   // Ustawienia typu kontenera (Import/Export)
@@ -70,40 +80,15 @@ const ContainerItem = ({ item, onMapPress, onRemove, refreshFavorites }) => {
     }
   };
   
-  // Definicja historii statusów na podstawie danych z API lub domyślnych wartości
+  // Definicja historii statusów - użyj danych z API, jeśli są dostępne
   const statusHistory = item.history && item.history.length > 0 
-    ? item.history.map((event, index) => ({
-        id: `${index}`,
-        title: event.title || event.status || 'Status',
-        date: event.date || formatDate(event.timestamp) || '',
-        completed: event.completed !== undefined ? event.completed : true
-      }))
-    : [
-        { id: '1', title: 'Rozpoczęcie transportu', date: '15 mar 2025', completed: true },
-        { id: '2', title: 'Na statku', date: '17 mar 2025', completed: true },
-        { id: '3', title: 'Dotarcie do portu', date: '18 mar 2025', completed: false },
-        { id: '4', title: 'Dostarczenie', date: '24 mar 2025', completed: false },
-      ];
-  
-  // Funkcja do formatowania daty w historii statusów
-  function formatDate(timestamp) {
-    if (!timestamp) return '';
-    try {
-      const date = new Date(timestamp);
-      const day = date.getDate();
-      const months = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
-      const month = months[date.getMonth()];
-      const year = date.getFullYear();
-      return `${day} ${month} ${year}`;
-    } catch (e) {
-      return '';
-    }
-  }
+    ? item.history
+    : [];
   
   // Renderuje punkt historii statusów
   const renderHistoryPoint = (point, index) => {
     return (
-      <View key={point.id} style={styles.historyPoint}>
+      <View key={`history-${index}`} style={styles.historyPoint}>
         <View style={styles.timelineLeft}>
           <View style={[styles.timelineDot, 
             { backgroundColor: point.completed ? '#4285F4' : '#E0E0E0' }]} />
@@ -139,7 +124,7 @@ const ContainerItem = ({ item, onMapPress, onRemove, refreshFavorites }) => {
       renderRightActions={renderRightActions}
       overshootRight={false}
     >
-      <View style={styles.containerCard}>
+      <View style={[styles.containerCard, isNotAvailable && styles.naContainer]}>
         {/* Nagłówek kontenera */}
         <View style={styles.containerHeader}>
           <View style={styles.containerInfo}>
@@ -158,7 +143,7 @@ const ContainerItem = ({ item, onMapPress, onRemove, refreshFavorites }) => {
           </View>
         </View>
 
-        <Text style={styles.mrnText}>MRN: {item.mrn}</Text>
+        <Text style={styles.mrnText}>Kod: {item.mrn}</Text>
 
         <View style={styles.timeContainer}>
           <MaterialIcons name="access-time" size={16} color="#757575" />
@@ -167,7 +152,7 @@ const ContainerItem = ({ item, onMapPress, onRemove, refreshFavorites }) => {
 
         <View style={styles.statusContainer}>
           <Text style={styles.statusText}>Status: {item.status}</Text>
-          <Text style={styles.progressText}>{item.progress}%</Text>
+          <Text style={styles.progressText}>{isNotAvailable ? 'N/A' : `${item.progress}%`}</Text>
         </View>
 
         <View style={styles.progressBarContainer}>
@@ -175,17 +160,31 @@ const ContainerItem = ({ item, onMapPress, onRemove, refreshFavorites }) => {
             style={[
               styles.progressBarFill, 
               { 
-                width: `${item.progress}%`,
+                width: isNotAvailable ? '100%' : `${item.progress}%`,
                 backgroundColor: progressBarColor 
               }
             ]} 
           />
+          {isNotAvailable && (
+            <View style={styles.notAvailableOverlay}>
+              <Text style={styles.notAvailableText}>Nieznany numer kontenera</Text>
+            </View>
+          )}
         </View>
+        
+        {isNotAvailable && (
+          <View style={styles.naInfoContainer}>
+            <MaterialIcons name="info-outline" size={18} color="#757575" />
+            <Text style={styles.naInfoText}>
+              Nie znaleziono danych dla podanego numeru
+            </Text>
+          </View>
+        )}
 
         {/* Stopka kontenera ze strzałką rozwijania */}
         <TouchableOpacity style={styles.containerFooter} onPress={toggleExpand}>
           <View>
-            <Text style={styles.terminalText}>{item.terminal}</Text>
+            <Text style={[styles.terminalText, isNotAvailable && styles.naText]}>Terminal: {item.terminal}</Text>
             <Text style={styles.arrivalText}>Przybycie: {item.arrival}</Text>
           </View>
           <MaterialIcons 
@@ -201,21 +200,39 @@ const ContainerItem = ({ item, onMapPress, onRemove, refreshFavorites }) => {
             <View style={styles.expandedHeader}>
               <Text style={styles.historyHeader}>Historia statusów</Text>
               <View style={styles.carrierContainer}>
-                <MaterialIcons name="local-shipping" size={16} color="#4285F4" />
-                <Text style={styles.carrierText}>Przewoźnik: {item.carrier || 'Maersk Line'}</Text>
+                <MaterialIcons name="directions-boat" size={16} color="#4285F4" />
+                <Text style={styles.carrierText}>{item.carrier}</Text>
               </View>
             </View>
             
             <View style={styles.historyContainer}>
-              {statusHistory.map((point, index) => renderHistoryPoint(point, index))}
+              {isNotAvailable ? (
+                <View style={styles.notAvailableHistoryContainer}>
+                  <MaterialIcons name="error-outline" size={24} color="#9E9E9E" />
+                  <Text style={styles.notAvailableHistoryText}>
+                    Nieprawidłowy numer kontenera. Nie można wyświetlić historii.
+                  </Text>
+                </View>
+              ) : (
+                statusHistory.map((point, index) => renderHistoryPoint(point, index))
+              )}
             </View>
 
             <TouchableOpacity 
-              style={styles.mapButton}
+              style={[
+                styles.mapButton,
+                isNotAvailable && styles.disabledMapButton
+              ]}
               onPress={onMapPress}
+              disabled={isNotAvailable}
             >
-              <MaterialIcons name="map" size={20} color="#4285F4" />
-              <Text style={styles.mapButtonText}>Pokaż na mapie</Text>
+              <MaterialIcons name="map" size={20} color={isNotAvailable ? "#9E9E9E" : "#4285F4"} />
+              <Text style={[
+                styles.mapButtonText,
+                isNotAvailable && styles.disabledMapButtonText
+              ]}>
+                {isNotAvailable ? 'Mapa niedostępna' : 'Pokaż na mapie'}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -235,6 +252,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  naContainer: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#9E9E9E',
+    backgroundColor: '#FAFAFA',
   },
   containerHeader: {
     flexDirection: 'row',
@@ -302,10 +324,43 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 16,
+    position: 'relative',
   },
   progressBarFill: {
     height: '100%',
     borderRadius: 4,
+  },
+  notAvailableOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  notAvailableText: {
+    color: '#9E9E9E',
+    fontSize: 8,
+    fontWeight: 'bold',
+  },
+  naText: {
+    color: '#9E9E9E',
+  },
+  naInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    padding: 8,
+    borderRadius: 4,
+    marginBottom: 16,
+  },
+  naInfoText: {
+    color: '#757575',
+    fontSize: 12,
+    marginLeft: 6,
+    flex: 1,
   },
   containerFooter: {
     flexDirection: 'row',
@@ -350,6 +405,20 @@ const styles = StyleSheet.create({
   historyContainer: {
     marginBottom: 16,
   },
+  notAvailableHistoryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    marginVertical: 10,
+  },
+  notAvailableHistoryText: {
+    marginLeft: 12,
+    fontSize: 14,
+    color: '#757575',
+  },
   historyPoint: {
     flexDirection: 'row',
     marginBottom: 16,
@@ -393,11 +462,17 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     padding: 12,
   },
+  disabledMapButton: {
+    backgroundColor: '#F5F5F5',
+  },
   mapButtonText: {
     fontSize: 14,
     color: '#4285F4',
     fontWeight: '500',
     marginLeft: 8,
+  },
+  disabledMapButtonText: {
+    color: '#9E9E9E',
   },
   deleteAction: {
     backgroundColor: '#F44336',

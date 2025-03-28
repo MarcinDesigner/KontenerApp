@@ -33,9 +33,6 @@ function App() {
       </NavigationContainer>
     </GestureHandlerRootView>
   );
-}
-
-// Dodajemy nazwę wyświetlaną do komponentu App
-App.displayName = 'App';
+};
 
 export default registerRootComponent(App);
