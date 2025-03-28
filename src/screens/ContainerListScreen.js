@@ -9,7 +9,8 @@ import {
   FlatList,
   ActivityIndicator,
   Alert,
-  BackHandler
+  BackHandler,
+  RefreshControl  // Dodane dla obsługi pull-to-refresh
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -39,6 +40,7 @@ const ContainerListScreen = ({ navigation, route }) => {
   // Stany do obsługi danych kontenerów
   const [containers, setContainers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false); // Stan dla pull-to-refresh
   const [error, setError] = useState(null);
   const [searched, setSearched] = useState(false); // Czy użytkownik wykonał wyszukiwanie
   
@@ -165,8 +167,21 @@ const ContainerListScreen = ({ navigation, route }) => {
       setContainers([]);
     } finally {
       setLoading(false);
+      setRefreshing(false); // Zakończ odświeżanie
     }
   };
+  
+  // Funkcja obsługująca pull-to-refresh
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    
+    // Jeśli jest aktywne wyszukiwanie, odśwież dane
+    if (searchQuery.trim() && searched) {
+      handleSearch(searchQuery, activeFilter);
+    } else {
+      setRefreshing(false);
+    }
+  }, [searchQuery, activeFilter, searched]);
   
   // Funkcja obsługująca zmianę filtra
   const handleFilterChange = (filter) => {
@@ -226,7 +241,7 @@ const ContainerListScreen = ({ navigation, route }) => {
 
   // Renderowanie różnych stanów ekranu
   const renderContent = () => {
-    if (loading) {
+    if (loading && !refreshing) {
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#1976D2" />
@@ -278,6 +293,16 @@ const ContainerListScreen = ({ navigation, route }) => {
         keyExtractor={item => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.containerList}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={["#1976D2"]}
+            tintColor="#1976D2"
+            title="Odświeżanie..."
+            titleColor="#757575"
+          />
+        }
       />
     );
   };

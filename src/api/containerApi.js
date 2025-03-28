@@ -185,8 +185,27 @@ export const searchContainers = async (query, filter = 'all') => {
  * Mapuje dane z API do formatu wyświetlanego w aplikacji
  */
 function mapContainerData(container) {
-  // Określ typ na podstawie portu
-  const type = container.portCode === 'PLGDN' ? 'Import' : 'Export';
+  // Określ typ na podstawie statusu
+  let type = 'Export'; // Domyślnie Export
+  
+  if (container.status) {
+    // Statusy importowe
+    const importStatuses = [
+      'NOT_FOUND', 'ENTER', 'EXIT', 'CUSTOMS_START', 
+      'WAIT_FOR_DOCS', 'WAIT_FOR_COARRI', 'WAIT_TIMEOUT', 
+      'ERROR', 'RELEASE', 'GATE_IN'  // Dodano GATE_IN do statusów importowych
+    ];
+    
+    // Statusy eksportowe
+    const exportStatuses = ['LOADED'];  // Usunięto GATE_IN z eksportowych
+    
+    if (importStatuses.includes(container.status)) {
+      type = 'Import';
+    } else if (exportStatuses.includes(container.status)) {
+      type = 'Export';
+    }
+    // Dla pozostałych statusów zostaje domyślny Export
+  }
   
   // Oblicz procent postępu na podstawie statusu
   let progress = 0;
@@ -250,12 +269,8 @@ function createHistoryFromContainer(container) {
       title: 'W tranzycie', 
       date: formatDate(container.atd) || 'N/A',
       completed: Boolean(container.atd) && (container.status === 'LOADED' || container.status === 'DISCHARGED') 
-    },
-    { 
-      title: 'Dostarczenie', 
-      date: 'N/A', // Data dostarczenia zwykle nie jest znana z wyprzedzeniem
-      completed: container.status === 'DELIVERED' 
     }
+    
   ];
 }
 
@@ -273,14 +288,13 @@ function createNAContainer(query) {
     progress: 0,
     terminal: 'N/A',
     arrival: 'N/A',
-    type: 'Export', // Domyślnie export
+    type: 'Export', // Domyślnie Export gdy status jest nieznany
     timeAgo: 'N/A',
     carrier: 'N/A',
     history: [
       { title: 'Rozpoczęcie transportu', date: 'N/A', completed: false },
       { title: 'Na statku', date: 'N/A', completed: false },
-      { title: 'W tranzycie', date: 'N/A', completed: false },
-      { title: 'Dostarczenie', date: 'N/A', completed: false }
+      { title: 'W tranzycie', date: 'N/A', completed: false }
     ]
   };
 }
@@ -356,7 +370,16 @@ function translateStatus(status) {
     'CUSTOMS_CLEARANCE': 'Odprawa celna',
     'WAITING_FOR_PICKUP': 'Oczekiwanie na odbiór',
     'LOADING': 'Załadunek',
-  
+    'GATE_IN': 'Wyładunek kontenera',  // Dodano nowy status z tłumaczeniem
+    'NOT_FOUND': 'Nie znaleziono',
+    'ENTER': 'Przyjęcie',
+    'EXIT': 'Wydanie',
+    'CUSTOMS_START': 'Rozpoczęcie odprawy celnej',
+    'WAIT_FOR_DOCS': 'Oczekiwanie na dokumenty',
+    'WAIT_FOR_COARRI': 'Oczekiwanie na raport',
+    'WAIT_TIMEOUT': 'Oczekiwanie - przekroczony czas',
+    'ERROR': 'Błąd',
+    'RELEASE': 'Zwolnienie',
   };
   
   return statusMap[status] || status;

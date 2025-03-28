@@ -80,9 +80,9 @@ const ContainerItem = ({ item, onMapPress, onRemove, refreshFavorites }) => {
     }
   };
   
-  // Definicja historii statusów - użyj danych z API, jeśli są dostępne
+  // Definicja historii statusów - używamy tylko pierwszych trzech elementów, usuwając "Dostarczenie"
   const statusHistory = item.history && item.history.length > 0 
-    ? item.history
+    ? item.history.filter(point => point.title !== 'Dostarczenie')
     : [];
   
   // Renderuje punkt historii statusów

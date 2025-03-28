@@ -7,18 +7,22 @@ import {
   TouchableOpacity,
   StatusBar,
   FlatList,
-  Alert
+  Alert,
+  RefreshControl  // Dodane dla obsługi pull-to-refresh
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import ContainerItem from '../components/ContainerItem';
 import MapModal from '../components/MapModal';
 import { getFavorites, removeFromFavorites } from '../services/favoritesService';
+import { searchContainers } from '../api/containerApi';  // Dodane do odświeżania danych
 
 const FavoritesScreen = ({ navigation }) => {
   const [favorites, setFavorites] = useState([]);
   const [mapModalVisible, setMapModalVisible] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);  // Stan dla pull-to-refresh
   
   // Funkcja pobierająca ulubione kontenery
   const loadFavorites = useCallback(async () => {
@@ -30,6 +34,71 @@ const FavoritesScreen = ({ navigation }) => {
       Alert.alert('Błąd', 'Nie udało się załadować ulubionych kontenerów.');
     }
   }, []);
+  
+  // Funkcja odświeżająca dane kontenerów z API
+  const refreshContainersData = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // Pobierz aktualne ulubione
+      const currentFavorites = await getFavorites();
+      
+      // Dla każdego kontenera, pobierz aktualne dane
+      const updatedFavorites = await Promise.all(
+        currentFavorites.map(async (container) => {
+          try {
+            // Pobierz aktualne dane dla tego kontenera
+            const results = await searchContainers(container.number);
+            
+            // Jeśli znaleziono dane, użyj ich, w przeciwnym razie zachowaj stare
+            if (results && results.length > 0) {
+              // Znajdź pasujący kontener
+              const matchingContainer = results.find(
+                result => result.number === container.number
+              );
+              
+              if (matchingContainer) {
+                // Zachowaj id z oryginalnego kontenera
+                return { ...matchingContainer, id: container.id };
+              }
+            }
+            
+            // Jeśli nie znaleziono aktualizacji, zachowaj stary kontener
+            return container;
+          } catch (error) {
+            console.error(`Błąd podczas aktualizacji kontenera ${container.number}:`, error);
+            return container;
+          }
+        })
+      );
+      
+      // Aktualizuj stan ulubionych
+      setFavorites(updatedFavorites);
+      
+      // Zapisz aktualizacje w pamięci
+      await updateFavoritesInStorage(updatedFavorites);
+      
+    } catch (error) {
+      console.error('Błąd podczas odświeżania danych:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+  
+  // Funkcja aktualizująca dane w pamięci
+  const updateFavoritesInStorage = async (updatedFavorites) => {
+    try {
+      // Zapisz zaktualizowane ulubione w pamięci
+      const favoritesString = JSON.stringify(updatedFavorites);
+      await AsyncStorage.setItem('@container_app_favorites', favoritesString);
+    } catch (error) {
+      console.error('Błąd podczas aktualizacji danych w pamięci:', error);
+    }
+  };
+  
+  // Funkcja obsługująca pull-to-refresh
+  const onRefresh = useCallback(() => {
+    refreshContainersData();
+  }, [refreshContainersData]);
   
   // Pobierz ulubione przy pierwszym renderowaniu
   useEffect(() => {
@@ -100,6 +169,16 @@ const FavoritesScreen = ({ navigation }) => {
           keyExtractor={item => item.id}
           contentContainerStyle={styles.containerList}
           ListEmptyComponent={renderEmptyState}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#1976D2"]}
+              tintColor="#1976D2"
+              title="Odświeżanie..."
+              titleColor="#757575"
+            />
+          }
         />
       </View>
       

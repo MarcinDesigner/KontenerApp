@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,15 +7,21 @@ import {
   TouchableOpacity,
   StatusBar,
   FlatList,
-  Alert
+  Alert,
+  RefreshControl,
+  AppState
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import SearchBar from '../components/SearchBar';
 import FilterButtons from '../components/FilterButtons';
 import ContainerItem from '../components/ContainerItem';
 import MapModal from '../components/MapModal';
 import { getSearchResults, removeSearchResult, clearSearchResults } from '../services/searchResultsService';
+import { searchContainers } from '../api/containerApi';  // Dodane do odświeżania danych
+
+const SEARCH_RESULTS_STORAGE_KEY = '@container_app_search_results';
 
 const HomeScreen = ({ navigation }) => {
   // Wszystkie stany definiujemy na początku komponentu
@@ -25,30 +31,175 @@ const HomeScreen = ({ navigation }) => {
   const [filteredResults, setFilteredResults] = useState([]);
   const [mapModalVisible, setMapModalVisible] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Referencja do AppState
+  const appState = useRef(AppState.currentState);
+  // Referencja do intervalu odświeżania
+  const refreshInterval = useRef(null);
   
   // Definiujemy funkcje w stałej kolejności
   const loadSearchResults = useCallback(async () => {
     try {
       const results = await getSearchResults();
       setSearchResults(results);
+      return results;
     } catch (error) {
       console.error('Błąd podczas ładowania historii wyszukiwań:', error);
+      return [];
     }
   }, []);
   
+  // Funkcja do odświeżania danych kontenerów z API
+  const refreshContainersData = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // Pobierz aktualne wyniki wyszukiwań
+      const currentResults = await getSearchResults();
+      
+      if (!currentResults || currentResults.length === 0) {
+        setRefreshing(false);
+        return;
+      }
+      
+      let hasChanges = false;
+      
+      // Dla każdego kontenera, pobierz aktualne dane
+      const updatedResults = await Promise.all(
+        currentResults.map(async (container) => {
+          try {
+            // Pobierz aktualne dane dla tego kontenera
+            const results = await searchContainers(container.number);
+            
+            // Jeśli znaleziono dane, użyj ich, w przeciwnym razie zachowaj stare
+            if (results && results.length > 0) {
+              // Znajdź pasujący kontener
+              const matchingContainer = results.find(
+                result => result.number === container.number
+              );
+              
+              if (matchingContainer) {
+                // Sprawdź, czy dane się zmieniły
+                if (
+                  matchingContainer.status !== container.status ||
+                  matchingContainer.progress !== container.progress ||
+                  matchingContainer.terminal !== container.terminal
+                ) {
+                  hasChanges = true;
+                }
+                
+                // Zachowaj id z oryginalnego kontenera
+                return { ...matchingContainer, id: container.id };
+              }
+            }
+            
+            // Jeśli nie znaleziono aktualizacji, zachowaj stary kontener
+            return container;
+          } catch (error) {
+            console.error(`Błąd podczas aktualizacji kontenera ${container.number}:`, error);
+            return container;
+          }
+        })
+      );
+      
+      // Aktualizuj stan wyników wyszukiwań tylko jeśli są zmiany
+      if (hasChanges) {
+        setSearchResults(updatedResults);
+        
+        // Zapisz aktualizacje w pamięci
+        await updateResultsInStorage(updatedResults);
+        console.log('Dane kontenerów zostały zaktualizowane');
+      } else {
+        console.log('Brak zmian w statusach kontenerów');
+      }
+      
+    } catch (error) {
+      console.error('Błąd podczas odświeżania danych:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+  
+  // Funkcja aktualizująca dane w pamięci
+  const updateResultsInStorage = async (updatedResults) => {
+    if (!updatedResults || updatedResults.length === 0) return;
+    
+    try {
+      // Zapisz zaktualizowane wyniki w pamięci
+      const resultsString = JSON.stringify(updatedResults);
+      await AsyncStorage.setItem(SEARCH_RESULTS_STORAGE_KEY, resultsString);
+      console.log('Dane zapisane w pamięci');
+    } catch (error) {
+      console.error('Błąd podczas aktualizacji danych w pamięci:', error);
+    }
+  };
+  
+  // Funkcja ustawiająca interwał odświeżania
+  const setupRefreshInterval = useCallback(() => {
+    // Wyczyść istniejący interwał, jeśli istnieje
+    if (refreshInterval.current) {
+      clearInterval(refreshInterval.current);
+    }
+    
+    // Ustaw nowy interwał odświeżania co 5 minut (300000 ms)
+    refreshInterval.current = setInterval(() => {
+      console.log('Automatyczne odświeżanie danych...');
+      refreshContainersData();
+    }, 300000);
+    
+    console.log('Ustawiono automatyczne odświeżanie');
+    
+    return () => {
+      if (refreshInterval.current) {
+        clearInterval(refreshInterval.current);
+        refreshInterval.current = null;
+      }
+    };
+  }, [refreshContainersData]);
+  
   // Główny useEffect - wywoływany tylko raz przy montowaniu
   useEffect(() => {
+    // Załaduj początkowe dane
     loadSearchResults();
-  }, [loadSearchResults]);
+    
+    // Dodaj nasłuchiwanie na zmiany stanu aplikacji
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (
+        appState.current.match(/inactive|background/) && 
+        nextAppState === 'active'
+      ) {
+        console.log('Aplikacja wróciła na pierwszy plan - odświeżam dane...');
+        refreshContainersData();
+        // Resetuj interwał przy powrocie z tła
+        setupRefreshInterval();
+      }
+      
+      appState.current = nextAppState;
+    });
+    
+    // Ustaw interwał odświeżania
+    const cleanupInterval = setupRefreshInterval();
+    
+    // Funkcja czyszcząca
+    return () => {
+      subscription.remove();
+      cleanupInterval();
+    };
+  }, [loadSearchResults, refreshContainersData, setupRefreshInterval]);
   
   // useFocusEffect powinien być zawsze wywoływany po innych hookach
   useFocusEffect(
     useCallback(() => {
+      console.log('Ekran główny aktywny - ładuję dane...');
       loadSearchResults();
+      
+      // Odśwież dane przy wejściu na ekran
+      refreshContainersData();
+      
       return () => {
         // Funkcja czyszcząca (opcjonalna)
       };
-    }, [loadSearchResults])
+    }, [loadSearchResults, refreshContainersData])
   );
   
   // Efekt filtrowania - zależny od searchResults i activeFilter
@@ -62,6 +213,11 @@ const HomeScreen = ({ navigation }) => {
       setFilteredResults(filtered);
     }
   }, [searchResults, activeFilter]);
+  
+  // Funkcja obsługująca pull-to-refresh
+  const onRefresh = useCallback(() => {
+    refreshContainersData();
+  }, [refreshContainersData]);
   
   // Funkcje obsługujące zdarzenia
   const handleSearch = () => {
@@ -166,6 +322,16 @@ const HomeScreen = ({ navigation }) => {
           keyExtractor={item => item.id}
           contentContainerStyle={styles.containerList}
           ListEmptyComponent={renderEmptyHistory}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#1976D2"]}
+              tintColor="#1976D2"
+              title="Odświeżanie..."
+              titleColor="#757575"
+            />
+          }
         />
       </>
     );
